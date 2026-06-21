@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-primary text-white;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gold hover:bg-gold-dark text-primary font-semibold py-2 px-6 rounded-lg 
+           transition-all duration-300 transform hover:scale-105 focus:outline-none 
+           focus:ring-2 focus:ring-gold focus:ring-opacity-50;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary hover:bg-opacity-90 text-white font-semibold py-2 px-6 
+           rounded-lg transition-all duration-300;
+  }
+  
+  .btn-danger {
+    @apply bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 
+           rounded-lg transition-all duration-300;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 border border-secondary rounded-lg focus:outline-none 
+           focus:ring-2 focus:ring-gold focus:border-transparent bg-secondary text-white 
+           transition-all duration-300;
+  }
+
+  .card {
+    @apply bg-secondary rounded-xl shadow-lg p-4 sm:p-6 hover:shadow-xl transition-shadow duration-300;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4;
+  }
+
+  .modal-content {
+    @apply bg-secondary rounded-xl shadow-2xl p-4 sm:p-8 max-w-2xl w-full mx-0 sm:mx-4 max-h-[90vh] overflow-y-auto text-white;
+  }
+
+  /* Ensure modals align to bottom on small screens for easier thumb reach */
+  @media (max-width: 640px) {
+    .modal-overlay {
+      @apply items-end;
+    }
+    .modal-content {
+      @apply rounded-b-none max-h-[85vh];
+    }
+  }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4a541;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b88c2e;
+}
+
+html {
+  scrollbar-color: #d4a541 #0d1315;
+  scrollbar-width: thin;
+}
+
+/* Hide scrollbar in sidebar nav */
+nav::-webkit-scrollbar {
+  display: none;
+}
+
+nav {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Sidebar nav scrollbar - thinner */
+nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+nav::-webkit-scrollbar-thumb {
+  background: rgba(212, 165, 65, 0.3);
+  border-radius: 2px;
+}
+
+nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 165, 65, 0.6);
+}
