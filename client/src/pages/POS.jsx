@@ -123,15 +123,20 @@ const POS = () => {
     }
 
     try {
-      for (const item of cartItems) {
-        await api.addSale({
-          employee_id: selectedEmployee,
+      await api.addSale({
+        employee_id: selectedEmployee,
+        sale_date: new Date().toISOString().split('T')[0],
+        notes: null,
+        items: cartItems.map((item) => ({
           inventory_id: item.inventory_id,
-          sale_date: new Date().toISOString().split('T')[0],
-          sale_amount: item.finalTotal,
-          notes: `Weight: ${item.weight}g, Karat: ${item.karat}`,
-        });
-      }
+          item_name: item.name,
+          karat: item.karat,
+          weight_grams: item.weight,
+          price_per_gram: item.currentPricePerGram,
+          discount: item.discount || 0,
+          is_taxed: item.isTaxed,
+        })),
+      });
       toast.success('Sale completed successfully!');
       clearCart();
       setShowPayModal(false);
