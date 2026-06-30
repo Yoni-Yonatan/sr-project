@@ -21,11 +21,12 @@ const getCategories = async (req, res) => {
 const addCategory = async (req, res) => {
   try {
     const { jewelry_type, category_name, level, parent_id, name } = req.body;
+    const image = req.file ? req.file.filename : null;
 
     const result = await pool.query(
-      `INSERT INTO categories (jewelry_type, category_name, level, parent_id, name) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [jewelry_type, category_name, level, parent_id || null, name]
+      `INSERT INTO categories (jewelry_type, category_name, level, parent_id, name, image) 
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [jewelry_type, category_name, level, parent_id || null, name, image]
     );
 
     res.status(201).json(result.rows[0]);
@@ -39,12 +40,22 @@ const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
     const { jewelry_type, category_name, level, parent_id, name } = req.body;
+    const image = req.file ? req.file.filename : null;
+
+    // Build dynamic update query
+    const fields = ['jewelry_type = $1', 'category_name = $2', 'level = $3', 'parent_id = $4', 'name = $5'];
+    const values = [jewelry_type, category_name, level, parent_id || null, name];
+    
+    if (image) {
+      fields.push(`image = $${values.length + 1}`);
+      values.push(image);
+    }
+    values.push(id);
 
     const result = await pool.query(
-      `UPDATE categories SET jewelry_type = $1, category_name = $2, 
-       level = $3, parent_id = $4, name = $5 
-       WHERE id = $6 RETURNING *`,
-      [jewelry_type, category_name, level, parent_id || null, name, id]
+      `UPDATE categories SET ${fields.join(', ')} 
+       WHERE id = $${values.length} RETURNING *`,
+      values
     );
 
     if (result.rows.length === 0) {

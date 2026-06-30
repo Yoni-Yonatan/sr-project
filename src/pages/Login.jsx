@@ -15,7 +15,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     
-    const result = await login(fullName, password);
+    const result = await login(fullName.trim(), password.trim());
     
     if (result.success) {
       toast.success('Login successful!');

@@ -36,10 +36,12 @@ const signup = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { full_name, password } = req.body;
+    const trimmedName = full_name ? full_name.trim() : '';
+    const trimmedPassword = password ? password.trim() : '';
 
     const result = await pool.query(
       'SELECT * FROM employees WHERE full_name = $1 AND is_active = true',
-      [full_name]
+      [trimmedName]
     );
 
     if (result.rows.length === 0) {
@@ -47,7 +49,7 @@ const login = async (req, res) => {
     }
 
     const user = result.rows[0];
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    const validPassword = await bcrypt.compare(trimmedPassword, user.password_hash);
 
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
