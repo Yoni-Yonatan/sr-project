@@ -56,12 +56,13 @@ const getDashboardData = async (req, res) => {
     );
     const inventoryValue = parseFloat(inventoryValueRow.value) || 0;
 
-    // 7. Sales by jewelry type (from inventory directly since sale_items may not exist yet)
+    // 7. Sales by jewelry type (join with karats table to get jewelry_type)
     const salesByType = await safeQuery(`
-      SELECT i.jewelry_type, COALESCE(SUM(s.sale_amount), 0) as total, COUNT(s.id) as count
+      SELECT k.jewelry_type, COALESCE(SUM(s.sale_amount), 0) as total, COUNT(s.id) as count
       FROM sales s
       LEFT JOIN inventory i ON s.inventory_id = i.id
-      GROUP BY i.jewelry_type
+      LEFT JOIN karats k ON i.karat_id = k.id
+      GROUP BY k.jewelry_type
     `);
 
     // 8. Sales by employee (top 5)
@@ -103,12 +104,13 @@ const getDashboardData = async (req, res) => {
       ORDER BY month ASC
     `);
 
-    // 12. Inventory by jewelry type
+    // 12. Inventory by jewelry type (join with karats table to get jewelry_type)
     const inventoryByType = await safeQuery(`
-      SELECT jewelry_type, COUNT(*) as count, COALESCE(SUM(weight_grams), 0) as total_weight
-      FROM inventory
-      WHERE is_sold = false
-      GROUP BY jewelry_type
+      SELECT k.jewelry_type, COUNT(*) as count, COALESCE(SUM(i.weight_grams), 0) as total_weight
+      FROM inventory i
+      LEFT JOIN karats k ON i.karat_id = k.id
+      WHERE i.is_sold = false
+      GROUP BY k.jewelry_type
     `);
 
     // 13. Total employees
