@@ -12,7 +12,7 @@
 @layer components {
   .btn-primary {
     @apply bg-gold hover:bg-gold-dark text-primary font-semibold py-2 px-6 rounded-lg 
-           transition-all duration-300 transform hover:scale-105 focus:outline-none 
+           transition-colors duration-300 focus:outline-none 
            focus:ring-2 focus:ring-gold focus:ring-opacity-50;
   }
   
