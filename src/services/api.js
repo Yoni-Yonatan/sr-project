@@ -15,6 +15,21 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// Intercept responses to handle Vercel Gateway error objects
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.data?.error && typeof error.response.data.error === 'object') {
+      // Vercel sometimes returns { error: { code, message } }
+      error.response.data.error = error.response.data.error.message || JSON.stringify(error.response.data.error);
+    } else if (error.response?.data && typeof error.response.data === 'object' && error.response.data.code && error.response.data.message) {
+      // Vercel sometimes returns { code, message } directly
+      error.response.data = { error: error.response.data.message };
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const api = {
   // Auth
   login: (data) => apiClient.post('/auth/login', data),
