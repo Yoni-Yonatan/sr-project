@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
+import { api } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -23,7 +24,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (full_name, password) => {
     try {
-      const response = await axios.post('/api/auth/login', { full_name, password });
+      const response = await api.login({ full_name, password });
       const { token: newToken, user: userData } = response.data;
       
       localStorage.setItem('token', newToken);
