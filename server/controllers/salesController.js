@@ -26,10 +26,12 @@ const getAllSales = async (req, res) => {
     for (const sale of sales) {
       const itemsResult = await pool.query(
         `SELECT si.*, i.weight_grams as stock_weight, i.current_price,
-                c.name as category_name, k.name as karat_name
+                CONCAT_WS(' → ', mc.name, sc.name, st.name) as category_name, k.name as karat_name
          FROM sale_items si
          LEFT JOIN inventory i ON si.inventory_id = i.id
-         LEFT JOIN categories c ON i.category_id = c.id
+         LEFT JOIN categories mc ON i.main_category_id = mc.id
+         LEFT JOIN categories sc ON i.sub_category_id = sc.id
+         LEFT JOIN categories st ON i.specific_type_id = st.id
          LEFT JOIN karats k ON i.karat_id = k.id
          WHERE si.sale_id = $1
          ORDER BY si.id`,
@@ -64,10 +66,12 @@ const getSaleById = async (req, res) => {
 
     const itemsResult = await pool.query(
       `SELECT si.*, i.weight_grams as stock_weight,
-              c.name as category_name, k.name as karat_name
+              CONCAT_WS(' → ', mc.name, sc.name, st.name) as category_name, k.name as karat_name
        FROM sale_items si
        LEFT JOIN inventory i ON si.inventory_id = i.id
-       LEFT JOIN categories c ON i.category_id = c.id
+       LEFT JOIN categories mc ON i.main_category_id = mc.id
+       LEFT JOIN categories sc ON i.sub_category_id = sc.id
+       LEFT JOIN categories st ON i.specific_type_id = st.id
        LEFT JOIN karats k ON i.karat_id = k.id
        WHERE si.sale_id = $1
        ORDER BY si.id`,

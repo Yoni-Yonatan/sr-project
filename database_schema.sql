@@ -43,12 +43,15 @@ CREATE TABLE current_pricing (
 CREATE TABLE inventory (
     id SERIAL PRIMARY KEY,
     date DATE DEFAULT CURRENT_DATE,
-    category_id INT REFERENCES categories(id),
+    main_category_id INT REFERENCES categories(id),
+    sub_category_id INT REFERENCES categories(id),
+    specific_type_id INT REFERENCES categories(id),
     karat_id INT REFERENCES karats(id),
     base_price DECIMAL(12, 2) NOT NULL,
     current_price DECIMAL(12, 2) NOT NULL,
     weight_grams DECIMAL(10, 3) NOT NULL,
     is_sold BOOLEAN DEFAULT false,
+    image VARCHAR(255),
     created_at TIMESTAMP DEFAULT NOW()
 );
 

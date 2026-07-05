@@ -3,6 +3,8 @@ import { api } from '../services/api';
 import toast from 'react-hot-toast';
 import { FiPlus, FiEdit2, FiTrash2, FiPackage, FiFilter, FiX } from 'react-icons/fi';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const Inventory = () => {
   const [inventory, setInventory] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -20,12 +22,15 @@ const Inventory = () => {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     jewelry_type: 'Gold',
-    category_id: '',
+    main_category_id: '',
+    sub_category_id: '',
+    specific_type_id: '',
     karat_id: '',
     base_price: '',
     current_price: '',
     weight_grams: '',
     is_sold: false,
+    image: null,
   });
 
   useEffect(() => {
@@ -87,17 +92,23 @@ const Inventory = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const data = {
-        ...formData,
-        base_price: parseFloat(formData.base_price),
-        weight_grams: parseFloat(formData.weight_grams),
-      };
+      const fd = new FormData();
+      fd.append('date', formData.date);
+      fd.append('jewelry_type', formData.jewelry_type);
+      if (formData.main_category_id) fd.append('main_category_id', formData.main_category_id);
+      if (formData.sub_category_id) fd.append('sub_category_id', formData.sub_category_id);
+      if (formData.specific_type_id) fd.append('specific_type_id', formData.specific_type_id);
+      fd.append('karat_id', formData.karat_id);
+      fd.append('base_price', formData.base_price);
+      fd.append('weight_grams', formData.weight_grams);
+      if (editingItem) fd.append('is_sold', formData.is_sold);
+      if (formData.image) fd.append('image', formData.image);
 
       if (editingItem) {
-        await api.updateInventory(editingItem.id, data);
+        await api.updateInventory(editingItem.id, fd);
         toast.success('Item updated');
       } else {
-        await api.addInventory(data);
+        await api.addInventory(fd);
         toast.success('Item added');
       }
       resetForm();
@@ -111,13 +122,16 @@ const Inventory = () => {
     setEditingItem(item);
     setFormData({
       date: item.date,
-      jewelry_type: item.jewelry_type,
-      category_id: item.category_id,
+      jewelry_type: item.jewelry_type || 'Gold',
+      main_category_id: item.main_category_id || '',
+      sub_category_id: item.sub_category_id || '',
+      specific_type_id: item.specific_type_id || '',
       karat_id: item.karat_id,
       base_price: item.base_price,
       current_price: item.current_price,
       weight_grams: item.weight_grams,
       is_sold: item.is_sold,
+      image: null,
     });
     setShowForm(true);
   };
@@ -137,12 +151,15 @@ const Inventory = () => {
     setFormData({
       date: new Date().toISOString().split('T')[0],
       jewelry_type: 'Gold',
-      category_id: '',
+      main_category_id: '',
+      sub_category_id: '',
+      specific_type_id: '',
       karat_id: '',
       base_price: '',
       current_price: currentPrice,
       weight_grams: '',
       is_sold: false,
+      image: null,
     });
     setEditingItem(null);
     setShowForm(false);
@@ -158,6 +175,18 @@ const Inventory = () => {
   const clearFilters = () => {
     setFilters({ karat: '', jewelry_type: '', status: '' });
   };
+
+  // Form Dropdown Logic
+  const mainCategories = categories.filter(c => c.level === 0 && c.jewelry_type === formData.jewelry_type);
+  const subCategories = formData.main_category_id 
+    ? categories.filter(c => c.level === 1 && c.parent_id === parseInt(formData.main_category_id)) 
+    : [];
+  const hasSubCategories = subCategories.length > 0;
+
+  const specificTypes = formData.sub_category_id
+    ? categories.filter(c => c.level === 2 && c.parent_id === parseInt(formData.sub_category_id))
+    : [];
+  const hasSpecificTypes = specificTypes.length > 0;
 
   return (
     <div>
@@ -221,7 +250,14 @@ const Inventory = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Jewelry Type</label>
                 <select value={formData.jewelry_type}
-                  onChange={(e) => setFormData({...formData, jewelry_type: e.target.value, karat_id: ''})}
+                  onChange={(e) => setFormData({
+                    ...formData, 
+                    jewelry_type: e.target.value, 
+                    karat_id: '',
+                    main_category_id: '',
+                    sub_category_id: '',
+                    specific_type_id: ''
+                  })}
                   className="input-field">
                   <option value="Gold">Gold</option>
                   <option value="Diamond">Diamond</option>
@@ -238,20 +274,48 @@ const Inventory = () => {
                   ))}
                 </select>
               </div>
+
+              {/* Hierarchical Categories */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
-                <select value={formData.category_id}
-                  onChange={(e) => setFormData({...formData, category_id: e.target.value})}
+                <label className="block text-sm font-medium text-gray-300 mb-1">Main Category</label>
+                <select value={formData.main_category_id}
+                  onChange={(e) => setFormData({...formData, main_category_id: e.target.value, sub_category_id: '', specific_type_id: ''})}
                   className="input-field">
-                  <option value="">Select Category</option>
-                  
-                  {categories.filter(c => c.jewelry_type === formData.jewelry_type)
-                    .map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))
-                  }
+                  <option value="">Select Main Category</option>
+                  {mainCategories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
                 </select>
               </div>
+
+              {hasSubCategories && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Subcategory</label>
+                  <select value={formData.sub_category_id}
+                    onChange={(e) => setFormData({...formData, sub_category_id: e.target.value, specific_type_id: ''})}
+                    className="input-field">
+                    <option value="">Select Subcategory</option>
+                    {subCategories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.sub_category_id && hasSpecificTypes && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Specific Type</label>
+                  <select value={formData.specific_type_id}
+                    onChange={(e) => setFormData({...formData, specific_type_id: e.target.value})}
+                    className="input-field">
+                    <option value="">Select Specific Type</option>
+                    {specificTypes.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Base Price</label>
                 <input type="number" step="0.01" value={formData.base_price}
@@ -269,6 +333,12 @@ const Inventory = () => {
                   onChange={(e) => setFormData({...formData, weight_grams: e.target.value})}
                   className="input-field" required />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Image (Optional)</label>
+                <input type="file" accept="image/*"
+                  onChange={(e) => setFormData({...formData, image: e.target.files[0]})}
+                  className="input-field" />
+              </div>
               {editingItem && (
                 <div className="flex items-center">
                   <label className="flex items-center space-x-2 cursor-pointer">
@@ -280,7 +350,7 @@ const Inventory = () => {
                 </div>
               )}
             </div>
-            <div className="flex justify-end space-x-3">
+            <div className="flex justify-end space-x-3 mt-4">
               <button type="button" onClick={resetForm} className="btn-secondary">Cancel</button>
               <button type="submit" className="btn-primary">
                 {editingItem ? 'Update' : 'Add Item'}
@@ -319,10 +389,18 @@ const Inventory = () => {
                   {item.jewelry_type}
                 </span>
               </div>
+              
+              {item.image && (
+                <div className="w-full h-48 mb-4 overflow-hidden rounded-lg bg-gray-800 flex items-center justify-center">
+                  <img src={`${API_URL}/uploads/${item.image}`} alt={item.karat_name} className="w-full h-full object-cover" />
+                </div>
+              )}
 
               <div className="space-y-2 mb-4">
                 <h4 className="font-semibold text-lg text-white">{item.karat_name}</h4>
-                <p className="text-gray-400 text-sm">{item.category_name || 'Uncategorized'}</p>
+                <p className="text-gray-400 text-sm">
+                  {[item.main_category_name, item.sub_category_name, item.specific_type_name].filter(Boolean).join(' → ') || 'Uncategorized'}
+                </p>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Weight:</span>
                   <span className="font-semibold text-gray-200">{item.weight_grams}g</span>

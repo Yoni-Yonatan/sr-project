@@ -4,11 +4,16 @@ const getInventory = async (req, res) => {
   try {
     const { karat, jewelry_type, status } = req.query;
     let query = `
-      SELECT i.*, k.name as karat_name, c.name as category_name,
-             c.jewelry_type
+      SELECT i.*, k.name as karat_name, 
+             mc.name as main_category_name,
+             sc.name as sub_category_name,
+             st.name as specific_type_name,
+             mc.jewelry_type
       FROM inventory i
       JOIN karats k ON i.karat_id = k.id
-      JOIN categories c ON i.category_id = c.id
+      LEFT JOIN categories mc ON i.main_category_id = mc.id
+      LEFT JOIN categories sc ON i.sub_category_id = sc.id
+      LEFT JOIN categories st ON i.specific_type_id = st.id
       WHERE 1=1
     `;
     const params = [];
@@ -20,7 +25,7 @@ const getInventory = async (req, res) => {
 
     if (jewelry_type) {
       params.push(jewelry_type);
-      query += ` AND c.jewelry_type = $${params.length}`;
+      query += ` AND mc.jewelry_type = $${params.length}`;
     }
 
     if (status === 'sold') {
@@ -41,7 +46,8 @@ const getInventory = async (req, res) => {
 
 const addInventory = async (req, res) => {
   try {
-    const { date, category_id, karat_id, base_price, weight_grams } = req.body;
+    const { date, main_category_id, sub_category_id, specific_type_id, karat_id, base_price, weight_grams } = req.body;
+    const image = req.file ? req.file.filename : null;
 
     // Get current price
     const priceResult = await pool.query(
@@ -50,9 +56,9 @@ const addInventory = async (req, res) => {
     const current_price = priceResult.rows[0]?.amount || base_price;
 
     const result = await pool.query(
-      `INSERT INTO inventory (date, category_id, karat_id, base_price, current_price, weight_grams) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [date, category_id, karat_id, base_price, current_price, weight_grams]
+      `INSERT INTO inventory (date, main_category_id, sub_category_id, specific_type_id, karat_id, base_price, current_price, weight_grams, image) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [date, main_category_id || null, sub_category_id || null, specific_type_id || null, karat_id, base_price, current_price, weight_grams, image]
     );
 
     res.status(201).json(result.rows[0]);
@@ -65,13 +71,29 @@ const addInventory = async (req, res) => {
 const updateInventory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { date, category_id, karat_id, base_price, weight_grams, is_sold } = req.body;
+    const { date, main_category_id, sub_category_id, specific_type_id, karat_id, base_price, weight_grams, is_sold } = req.body;
+    const image = req.file ? req.file.filename : null;
+
+    const fields = [
+      'date = $1', 'main_category_id = $2', 'sub_category_id = $3', 
+      'specific_type_id = $4', 'karat_id = $5', 'base_price = $6', 
+      'weight_grams = $7', 'is_sold = $8'
+    ];
+    const values = [
+      date, main_category_id || null, sub_category_id || null, 
+      specific_type_id || null, karat_id, base_price, weight_grams, is_sold
+    ];
+
+    if (image) {
+      fields.push(`image = $${values.length + 1}`);
+      values.push(image);
+    }
+    values.push(id);
 
     const result = await pool.query(
-      `UPDATE inventory SET date = $1, category_id = $2, karat_id = $3, 
-       base_price = $4, weight_grams = $5, is_sold = $6 
-       WHERE id = $7 RETURNING *`,
-      [date, category_id, karat_id, base_price, weight_grams, is_sold, id]
+      `UPDATE inventory SET ${fields.join(', ')} 
+       WHERE id = $${values.length} RETURNING *`,
+      values
     );
 
     if (result.rows.length === 0) {

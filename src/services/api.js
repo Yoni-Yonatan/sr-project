@@ -70,8 +70,12 @@ export const api = {
   
   // Inventory
   getInventory: (params) => apiClient.get('/inventory', { params }),
-  addInventory: (data) => apiClient.post('/inventory', data),
-  updateInventory: (id, data) => apiClient.put(`/inventory/${id}`, data),
+  addInventory: (data) => apiClient.post('/inventory', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
+  updateInventory: (id, data) => apiClient.put(`/inventory/${id}`, data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   deleteInventory: (id) => apiClient.delete(`/inventory/${id}`),
 
   // Dashboard

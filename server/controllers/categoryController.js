@@ -24,9 +24,9 @@ const addCategory = async (req, res) => {
     const image = req.file ? req.file.filename : null;
 
     const result = await pool.query(
-      `INSERT INTO categories (jewelry_type, category_name, level, parent_id, name, image) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [jewelry_type, category_name, level, parent_id || null, name, image]
+      `INSERT INTO categories (jewelry_type, category_name, level, parent_id, name) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [jewelry_type, category_name, level, parent_id || null, name]
     );
 
     res.status(201).json(result.rows[0]);
@@ -45,11 +45,6 @@ const updateCategory = async (req, res) => {
     // Build dynamic update query
     const fields = ['jewelry_type = $1', 'category_name = $2', 'level = $3', 'parent_id = $4', 'name = $5'];
     const values = [jewelry_type, category_name, level, parent_id || null, name];
-    
-    if (image) {
-      fields.push(`image = $${values.length + 1}`);
-      values.push(image);
-    }
     values.push(id);
 
     const result = await pool.query(
