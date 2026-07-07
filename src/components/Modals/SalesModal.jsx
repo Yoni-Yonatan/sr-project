@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../services/api';
 import toast from 'react-hot-toast';
 import {
-  FiX, FiDollarSign, FiUser, FiBox, FiCalendar, FiFileText,
-  FiPercent, FiPlus, FiTrash2, FiCheck, FiSearch
+  FiX, FiDollarSign, FiUser, FiCalendar, FiFileText,
+  FiPlus, FiTrash2, FiCheck, FiShoppingCart
 } from 'react-icons/fi';
+import InventorySelectionModal from './InventorySelectionModal';
 
 const TAX_RATE = 0.15;
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -21,23 +23,22 @@ const calcItemRow = (item) => {
 const SalesModal = ({ sale, onClose, onRefresh }) => {
   const [employees, setEmployees] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [karats, setKarats] = useState([]);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
 
   const [employeeId, setEmployeeId] = useState('');
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState([]);
 
-  const [showItemForm, setShowItemForm] = useState(false);
-  const [selectedInv, setSelectedInv] = useState(null);
-  const [itemWeight, setItemWeight] = useState('');
-  const [itemPrice, setItemPrice] = useState('');
-  const [itemDiscount, setItemDiscount] = useState(0);
-  const [itemTaxed, setItemTaxed] = useState(true);
-  const [itemName, setItemName] = useState('');
-  const [itemKarat, setItemKarat] = useState('');
-  const [invSearch, setInvSearch] = useState('');
+  // Payment State
+  const [paidAmount, setPaidAmount] = useState('');
+
+  // Inventory Selection Modal
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -62,65 +63,50 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
 
   const fetchData = async () => {
     try {
-      const [empRes, invRes, priceRes] = await Promise.all([
+      setFetching(true);
+      const [empRes, invRes, priceRes, catRes, karatRes] = await Promise.all([
         api.getEmployees(),
         api.getInventory(),
         api.getCurrentPrice(),
+        api.getCategories(),
+        api.getKarats()
       ]);
       setEmployees(empRes.data.filter(e => e.is_active));
       setInventory(invRes.data.filter(i => !i.is_sold));
       if (priceRes.data) setCurrentPrice(parseFloat(priceRes.data.amount));
+      setCategories(catRes.data);
+      setKarats(karatRes.data);
     } catch (err) {
       console.error('Error fetching data:', err);
+      toast.error('Failed to load required data.');
+    } finally {
+      setFetching(false);
     }
   };
 
-  const filteredInventory = inventory.filter(i =>
-    i.category_name?.toLowerCase().includes(invSearch.toLowerCase()) ||
-    i.karat_name?.toLowerCase().includes(invSearch.toLowerCase()) ||
-    i.jewelry_type?.toLowerCase().includes(invSearch.toLowerCase())
-  );
-
-  const handleSelectInventory = (inv) => {
-    setSelectedInv(inv);
-    setItemName(`${inv.category_name || 'Item'} - ${inv.karat_name || ''}`);
-    setItemKarat(inv.karat_name || '');
-    setItemPrice(inv.current_price || currentPrice);
-    setItemWeight('');
-    setItemDiscount(0);
-    setItemTaxed(true);
-  };
-
-  const handleAddItem = () => {
-    if (!itemWeight || parseFloat(itemWeight) <= 0) {
-      toast.error('Enter a valid weight');
+  const handleAddItem = (selectedItemData) => {
+    const weight = round2(parseFloat(selectedItemData.saleWeight));
+    if (!selectedItemData || !weight || weight <= 0) {
+      toast.error('Invalid weight');
       return;
     }
-    if (!itemPrice || parseFloat(itemPrice) <= 0) {
-      toast.error('Enter a valid price per gram');
-      return;
-    }
+
+    const pricePerGram = parseFloat(selectedItemData.current_price) || currentPrice;
+
     const newItem = calcItemRow({
       id: Date.now(),
-      inventory_id: selectedInv?.id || null,
-      item_name: itemName || 'Custom Item',
-      karat: itemKarat,
-      weight_grams: round2(parseFloat(itemWeight)),
-      price_per_gram: round2(parseFloat(itemPrice)),
-      discount: round2(parseFloat(itemDiscount) || 0),
-      is_taxed: itemTaxed,
+      inventory_id: selectedItemData.id,
+      item_name: `${selectedItemData.category_name || 'Item'} - ${selectedItemData.karat_name || ''}`,
+      karat: selectedItemData.karat_name || '',
+      weight_grams: weight,
+      price_per_gram: pricePerGram,
+      discount: round2(parseFloat(selectedItemData.saleDiscount) || 0),
+      is_taxed: true, // Defaulting to true
     });
+
     setItems(prev => [...prev, newItem]);
     toast.success('Item added');
-    setSelectedInv(null);
-    setItemWeight('');
-    setItemPrice('');
-    setItemDiscount(0);
-    setItemTaxed(true);
-    setItemName('');
-    setItemKarat('');
-    setInvSearch('');
-    setShowItemForm(false);
+    setShowInventoryModal(false);
   };
 
   const handleRemoveItem = (id) => {
@@ -146,10 +132,19 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
   const totalTax = round2(items.reduce((s, i) => s + i.tax_amount, 0));
   const grandTotal = round2(items.reduce((s, i) => s + i.final_total, 0));
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const remainingBalance = round2(grandTotal - (parseFloat(paidAmount) || 0));
+  
+  let paymentStatus = 'Unpaid';
+  if ((parseFloat(paidAmount) || 0) >= grandTotal && grandTotal > 0) paymentStatus = 'Full';
+  else if ((parseFloat(paidAmount) || 0) > 0) paymentStatus = 'Partial';
+
+  const handleSubmit = async () => {
     if (items.length === 0) {
       toast.error('Add at least one item');
+      return;
+    }
+    if (!employeeId) {
+      toast.error('Select an employee');
       return;
     }
     setLoading(true);
@@ -158,6 +153,9 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
         employee_id: employeeId,
         sale_date: saleDate,
         notes,
+        // Passing optional payment info if backend starts supporting it
+        paid_amount: parseFloat(paidAmount) || 0,
+        payment_status: paymentStatus, 
         items: items.map(i => ({
           inventory_id: i.inventory_id,
           item_name: i.item_name,
@@ -187,289 +185,238 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content !p-4 sm:!p-8 max-w-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4 sm:mb-6">
-          <h3 className="text-lg font-bold text-white">
-            {sale ? 'Edit Sale' : 'Add New Sale'}
-          </h3>
-          <button onClick={onClose} className="p-2 hover:bg-primary rounded-lg text-gray-400"><FiX /></button>
+  if (fetching) {
+    return (
+      <div className="modal-overlay">
+        <div className="flex justify-center items-center h-full">
+          <div className="animate-spin w-12 h-12 border-4 border-gold border-t-transparent rounded-full"></div>
         </div>
+      </div>
+    );
+  }
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Employee & Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Employee *</label>
-              <div className="relative">
-                <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}
-                  className="input-field pl-10" required>
-                  <option value="">Select Employee</option>
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.full_name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Sale Date *</label>
-              <div className="relative">
-                <FiCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)}
-                  className="input-field pl-10" required />
-              </div>
-            </div>
+  return createPortal(
+    <>
+      <div className="modal-overlay z-[60] bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="modal-content !p-0 w-full max-w-6xl h-[90vh] bg-[#141414] border border-[#333] shadow-2xl flex flex-col rounded-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          
+          {/* Header */}
+          <div className="flex justify-between items-center p-5 border-b border-[#333] bg-[#1A1A1A]">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              <FiShoppingCart className="text-gold" /> {sale ? 'Edit Sale' : 'Daily Sales'}
+            </h2>
+            <button onClick={onClose} className="p-2 hover:bg-[#333] rounded-lg text-gray-400 transition">
+              <FiX size={24} />
+            </button>
           </div>
 
-          {/* ITEMS SECTION */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-300">Items * ({items.length})</label>
-              <button type="button" onClick={() => setShowItemForm(!showItemForm)}
-                className="text-gold text-sm flex items-center gap-1 hover:text-gold-light">
-                <FiPlus size={14} /> Add Item
-              </button>
-            </div>
-
-            {showItemForm && (
-              <div className="bg-primary rounded-lg p-3 sm:p-4 mb-3 space-y-3 border border-secondary">
-                <div className="relative">
-                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" placeholder="Search inventory..."
-                    value={invSearch} onChange={(e) => setInvSearch(e.target.value)}
-                    className="input-field pl-10 text-sm" />
-                </div>
-
-                {invSearch && (
-                  <div className="max-h-32 overflow-y-auto space-y-1">
-                    {filteredInventory.map(inv => (
-                      <button key={inv.id} type="button" onClick={() => handleSelectInventory(inv)}
-                        className={`w-full text-left p-2 rounded text-sm transition ${
-                          selectedInv?.id === inv.id ? 'bg-gold/20 border border-gold' : 'hover:bg-secondary border border-transparent'
-                        }`}>
-                        <div className="flex justify-between">
-                          <span className="text-white">{inv.category_name} - {inv.karat_name}</span>
-                          <span className="text-gold">${inv.current_price}/g</span>
-                        </div>
-                        <span className="text-gray-500 text-xs">{inv.jewelry_type} • {inv.weight_grams}g stock</span>
-                      </button>
-                    ))}
-                    {filteredInventory.length === 0 && (
-                      <p className="text-gray-500 text-xs text-center py-2">No items found</p>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Item Name</label>
-                    <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)}
-                      className="input-field text-sm" placeholder="Item name" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Karat</label>
-                    <input type="text" value={itemKarat} onChange={(e) => setItemKarat(e.target.value)}
-                      className="input-field text-sm" placeholder="e.g. 24K" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Weight (g) *</label>
-                    <input type="number" step="0.001" min="0" value={itemWeight}
-                      onChange={(e) => setItemWeight(e.target.value)}
-                      className="input-field text-sm" placeholder="0.000" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Price/g *</label>
-                    <div className="relative">
-                      <FiDollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-                      <input type="number" step="0.01" min="0" value={itemPrice}
-                        onChange={(e) => setItemPrice(e.target.value)}
-                        className="input-field pl-8 text-sm" placeholder="0.00" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Discount</label>
-                    <div className="relative">
-                      <FiPercent className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-                      <input type="number" step="0.01" min="0" value={itemDiscount}
-                        onChange={(e) => setItemDiscount(e.target.value)}
-                        className="input-field pl-8 text-sm" placeholder="0.00" />
-                    </div>
-                  </div>
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-2 cursor-pointer pb-2">
-                      <input type="checkbox" checked={itemTaxed}
-                        onChange={(e) => setItemTaxed(e.target.checked)}
-                        className="w-4 h-4 text-gold rounded" />
-                      <span className="text-sm text-gray-300">Tax (15%)</span>
-                    </label>
+          {/* Main Body - Two Columns */}
+          <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+            
+            {/* Left Column - Items & Details */}
+            <div className="flex-1 overflow-y-auto p-6 border-r border-[#333] custom-scrollbar">
+              
+              {/* Date & Employee */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Employee *</label>
+                  <div className="relative">
+                    <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}
+                      className="w-full bg-[#111] border border-[#333] text-white pl-10 pr-4 py-2.5 rounded-lg focus:border-gold focus:outline-none transition appearance-none" required>
+                      <option value="">Select Employee</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-
-                {itemWeight && itemPrice && (
-                  <div className="bg-secondary/50 rounded p-2 text-xs space-y-1">
-                    <div className="flex justify-between text-gray-400">
-                      <span>Subtotal:</span>
-                      <span className="text-white">{formatCurrency(round2(parseFloat(itemWeight) * parseFloat(itemPrice)))}</span>
-                    </div>
-                    {itemDiscount > 0 && (
-                      <div className="flex justify-between text-gray-400">
-                        <span>Discount:</span>
-                        <span className="text-red-400">-{formatCurrency(parseFloat(itemDiscount))}</span>
-                      </div>
-                    )}
-                    {itemTaxed && (
-                      <div className="flex justify-between text-gray-400">
-                        <span>Tax (15%):</span>
-                        <span className="text-gold">{formatCurrency(round2((parseFloat(itemWeight) * parseFloat(itemPrice) - parseFloat(itemDiscount || 0)) * TAX_RATE))}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-gray-300 font-semibold pt-1 border-t border-secondary">
-                      <span>Total:</span>
-                      <span className="text-gold">{formatCurrency(round2(
-                        (parseFloat(itemWeight) * parseFloat(itemPrice) - parseFloat(itemDiscount || 0)) * (itemTaxed ? 1 + TAX_RATE : 1)
-                      ))}</span>
-                    </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Sale Date *</label>
+                  <div className="relative">
+                    <FiCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)}
+                      className="w-full bg-[#111] border border-[#333] text-white pl-10 pr-4 py-2.5 rounded-lg focus:border-gold focus:outline-none transition" required />
                   </div>
-                )}
-
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setShowItemForm(false)}
-                    className="btn-secondary text-sm py-1.5 px-4">Cancel</button>
-                  <button type="button" onClick={handleAddItem}
-                    className="btn-primary text-sm py-1.5 px-4" disabled={!itemWeight || !itemPrice}>
-                    Add to Sale
-                  </button>
                 </div>
               </div>
-            )}
 
-            {items.length === 0 ? (
-              <div className="text-center py-6 text-gray-500 text-sm border border-dashed border-secondary rounded-lg">
-                No items added yet. Click "Add Item" to start.
+              {/* Items Section */}
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gold">Add Items from Inventory</h3>
+                <button type="button" onClick={() => setShowInventoryModal(true)}
+                  className="bg-gold/10 text-gold hover:bg-gold/20 border border-gold/30 px-4 py-2 rounded-lg flex items-center gap-2 transition text-sm font-medium">
+                  <FiPlus size={16} /> Browse Inventory
+                </button>
               </div>
-            ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                <div className="hidden sm:block">
-                  <table className="w-full text-sm">
+
+              {/* Cart Table */}
+              <div className="bg-[#111] border border-[#333] rounded-xl overflow-hidden min-h-[300px]">
+                {items.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full py-16 text-gray-500">
+                    <FiShoppingCart size={48} className="mb-4 opacity-20" />
+                    <p>No items added yet.</p>
+                    <p className="text-sm">Click 'Browse Inventory' to start.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left">
                     <thead>
-                      <tr className="border-b border-secondary text-gray-400 text-xs">
-                        <th className="text-left py-2 px-2">Item</th>
-                        <th className="text-left py-2 px-2">Wt (g)</th>
-                        <th className="text-left py-2 px-2">$/g</th>
-                        <th className="text-left py-2 px-2">Sub</th>
-                        <th className="text-left py-2 px-2">Disc</th>
-                        <th className="text-center py-2 px-2">Tax</th>
-                        <th className="text-right py-2 px-2">Total</th>
-                        <th className="py-2 px-2"></th>
+                      <tr className="border-b border-[#333] bg-[#1A1A1A]">
+                        <th className="py-3 px-4 font-semibold text-gray-400 text-sm"># Item Details</th>
+                        <th className="py-3 px-4 font-semibold text-gray-400 text-sm">Wt (g)</th>
+                        <th className="py-3 px-4 font-semibold text-gray-400 text-sm">$/g</th>
+                        <th className="py-3 px-4 font-semibold text-gray-400 text-sm w-24">Disc</th>
+                        <th className="py-3 px-4 font-semibold text-gray-400 text-sm text-center">Tax</th>
+                        <th className="py-3 px-4 font-semibold text-gray-400 text-sm text-right">Total</th>
+                        <th className="py-3 px-4"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((item) => (
-                        <tr key={item.id} className="border-b border-secondary/50 hover:bg-secondary/30">
-                          <td className="py-2 px-2 text-white text-xs">{item.item_name}</td>
-                          <td className="py-2 px-2 text-gray-300 text-xs">{item.weight_grams}</td>
-                          <td className="py-2 px-2 text-gray-300 text-xs">{formatCurrency(item.price_per_gram)}</td>
-                          <td className="py-2 px-2 text-gray-300 text-xs">{formatCurrency(item.sub_total)}</td>
-                          <td className="py-2 px-2">
+                      {items.map((item, idx) => (
+                        <tr key={item.id} className="border-b border-[#333] hover:bg-[#1A1A1A] transition">
+                          <td className="py-3 px-4">
+                            <p className="text-white font-medium text-sm">{item.item_name}</p>
+                            <p className="text-xs text-gray-500">ID: {item.inventory_id || 'Custom'} • {item.karat}</p>
+                          </td>
+                          <td className="py-3 px-4 text-gray-300 text-sm">{item.weight_grams}</td>
+                          <td className="py-3 px-4 text-gray-300 text-sm">{formatCurrency(item.price_per_gram)}</td>
+                          <td className="py-3 px-4">
                             <input type="number" min="0" step="0.01" value={item.discount}
                               onChange={(e) => handleUpdateItemDiscount(item.id, e.target.value)}
-                              className="input-field w-16 py-1 px-1.5 text-xs" />
+                              className="w-full bg-[#222] border border-[#444] rounded px-2 py-1 text-sm text-white focus:border-gold outline-none" />
                           </td>
-                          <td className="py-2 px-2 text-center">
+                          <td className="py-3 px-4 text-center">
                             <button type="button" onClick={() => handleToggleItemTax(item.id)}
-                              className={`p-1 rounded text-xs ${item.is_taxed ? 'bg-gold/20 text-gold' : 'bg-gray-700 text-gray-400'}`}>
-                              {item.is_taxed ? <FiCheck size={12} /> : <FiX size={12} />}
+                              className={`p-1.5 rounded text-xs transition ${item.is_taxed ? 'bg-gold/20 text-gold' : 'bg-[#333] text-gray-400'}`}>
+                              {item.is_taxed ? <FiCheck size={14} /> : <FiX size={14} />}
                             </button>
                           </td>
-                          <td className="py-2 px-2 text-right text-gold font-semibold text-xs">{formatCurrency(item.final_total)}</td>
-                          <td className="py-2 px-2">
+                          <td className="py-3 px-4 text-right text-gold font-semibold text-sm">
+                            {formatCurrency(item.final_total)}
+                          </td>
+                          <td className="py-3 px-4 text-right">
                             <button type="button" onClick={() => handleRemoveItem(item.id)}
-                              className="p-1 text-red-400 hover:bg-red-500/20 rounded">
-                              <FiTrash2 size={12} />
+                              className="p-1.5 text-red-400 hover:bg-red-500/20 rounded transition">
+                              <FiTrash2 size={16} />
                             </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-400 mb-1">Notes</label>
+                <div className="relative">
+                  <FiFileText className="absolute left-3 top-3 text-gray-500" />
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+                    className="w-full bg-[#111] border border-[#333] text-white pl-10 pr-4 py-2 rounded-lg focus:border-gold focus:outline-none transition" 
+                    rows="3" placeholder="Optional notes..." />
+                </div>
+              </div>
+
+            </div>
+
+            {/* Right Column - Summary & Payment */}
+            <div className="w-full lg:w-[400px] flex flex-col bg-[#1A1A1A] overflow-y-auto custom-scrollbar">
+              <div className="p-6 space-y-6 flex-1">
+                
+                {/* Sale Summary */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gold mb-4">Sale Summary</h3>
+                  <div className="bg-[#111] border border-[#333] rounded-xl p-4 space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Sub Total</span>
+                      <span className="text-white font-medium">{formatCurrency(subTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Taxable Amount (15%)</span>
+                      <span className="text-white font-medium">{formatCurrency(subTotal - totalDiscount)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Tax Amount (15%)</span>
+                      <span className="text-gold font-medium">{formatCurrency(totalTax)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Total Discount</span>
+                      <span className="text-red-400 font-medium">-{formatCurrency(totalDiscount)}</span>
+                    </div>
+                    <div className="pt-3 mt-3 border-t border-[#333] flex justify-between items-center">
+                      <span className="text-lg font-bold text-white">Grand Total</span>
+                      <span className="text-2xl font-bold text-gold">{formatCurrency(grandTotal)}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="sm:hidden space-y-2">
-                  {items.map((item) => (
-                    <div key={item.id} className="bg-primary rounded-lg p-3 border border-secondary">
-                      <div className="flex justify-between items-start mb-1">
-                        <div>
-                          <p className="text-white text-xs font-medium">{item.item_name}</p>
-                          <p className="text-gray-500 text-xs">{item.weight_grams}g × {formatCurrency(item.price_per_gram)}</p>
-                        </div>
-                        <button type="button" onClick={() => handleRemoveItem(item.id)}
-                          className="p-1 text-red-400 hover:bg-red-500/20 rounded">
-                          <FiTrash2 size={12} />
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-between text-xs mt-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-500">Disc:</span>
-                          <input type="number" min="0" step="0.01" value={item.discount}
-                            onChange={(e) => handleUpdateItemDiscount(item.id, e.target.value)}
-                            className="input-field w-14 py-0.5 px-1 text-xs" />
-                        </div>
-                        <button type="button" onClick={() => handleToggleItemTax(item.id)}
-                          className={`px-2 py-0.5 rounded text-xs ${item.is_taxed ? 'bg-gold/20 text-gold' : 'bg-gray-700 text-gray-400'}`}>
-                          {item.is_taxed ? 'Taxed' : 'No Tax'}
-                        </button>
-                        <span className="text-gold font-semibold">{formatCurrency(item.final_total)}</span>
+                {/* Payment */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gold mb-4">Payment</h3>
+                  <div className="bg-[#111] border border-[#333] rounded-xl p-4 space-y-4">
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-1">Paid Amount (USD)</label>
+                      <div className="relative">
+                        <FiDollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                        <input type="number" step="0.01" min="0" value={paidAmount}
+                          onChange={(e) => setPaidAmount(e.target.value)}
+                          className="w-full bg-[#1A1A1A] border border-[#333] text-white pl-10 pr-4 py-2 rounded-lg focus:border-gold focus:outline-none transition" 
+                          placeholder="0.00" />
                       </div>
                     </div>
-                  ))}
+
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Remaining Balance</span>
+                      <span className={`font-bold ${remainingBalance > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        {formatCurrency(remainingBalance)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm pt-2 border-t border-[#333]">
+                      <span className="text-gray-400">Payment Status</span>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        paymentStatus === 'Full' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                        paymentStatus === 'Partial' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                        'bg-red-500/20 text-red-400 border border-red-500/30'
+                      }`}>
+                        {paymentStatus}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
 
-          {items.length > 0 && (
-            <div className="bg-primary rounded-lg p-3 space-y-1.5 text-sm">
-              <div className="flex justify-between text-gray-400">
-                <span>Subtotal</span>
-                <span className="text-white">{formatCurrency(subTotal)}</span>
+              {/* Action */}
+              <div className="p-6 bg-[#111] border-t border-[#333]">
+                <button 
+                  onClick={handleSubmit} 
+                  disabled={loading || items.length === 0} 
+                  className="w-full bg-gold hover:bg-yellow-500 text-[#111] font-bold py-3.5 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                  <FiShoppingCart size={18} />
+                  {loading ? 'Saving...' : sale ? 'Update Sale' : 'Save Sale'}
+                </button>
               </div>
-              {totalDiscount > 0 && (
-                <div className="flex justify-between text-gray-400">
-                  <span>Total Discount</span>
-                  <span className="text-red-400">-{formatCurrency(totalDiscount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-gray-400">
-                <span>Tax (15%)</span>
-                <span className="text-gold">{formatCurrency(totalTax)}</span>
-              </div>
-              <div className="flex justify-between text-white font-bold text-base pt-2 border-t border-secondary">
-                <span>Grand Total</span>
-                <span className="text-gold">{formatCurrency(grandTotal)}</span>
-              </div>
+
             </div>
-          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Notes</label>
-            <div className="relative">
-              <FiFileText className="absolute left-3 top-3 text-gray-400" />
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-                className="input-field pl-10" rows="2" placeholder="Optional notes..." />
-            </div>
           </div>
-
-          <div className="flex justify-end space-x-3 pt-2 border-t border-secondary">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={loading || items.length === 0} className="btn-primary">
-              {loading ? 'Saving...' : sale ? 'Update Sale' : 'Add Sale'}
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
-    </div>
+
+      {showInventoryModal && (
+        <InventorySelectionModal
+          inventory={inventory}
+          categories={categories}
+          karats={karats}
+          currentPrice={currentPrice}
+          onClose={() => setShowInventoryModal(false)}
+          onSelect={handleAddItem}
+        />
+      )}
+    </>,
+    document.body
   );
 };
 

@@ -10,6 +10,7 @@ const Sales = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingSale, setEditingSale] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterDate, setFilterDate] = useState('');
 
   useEffect(() => {
     fetchSales();
@@ -49,14 +50,29 @@ const Sales = () => {
 
   const filteredSales = sales.filter(sale => {
     const term = searchTerm.toLowerCase();
-    if (sale.employee_name?.toLowerCase().includes(term)) return true;
-    if (sale.notes?.toLowerCase().includes(term)) return true;
-    if (sale.items?.some(i =>
-      i.item_name?.toLowerCase().includes(term) ||
-      i.karat?.toLowerCase().includes(term) ||
-      i.category_name?.toLowerCase().includes(term)
-    )) return true;
-    return false;
+    
+    // Search check
+    let matchesSearch = true;
+    if (term) {
+      matchesSearch = !!(
+        sale.employee_name?.toLowerCase().includes(term) ||
+        sale.notes?.toLowerCase().includes(term) ||
+        sale.items?.some(i =>
+          i.item_name?.toLowerCase().includes(term) ||
+          i.karat?.toLowerCase().includes(term) ||
+          i.category_name?.toLowerCase().includes(term)
+        )
+      );
+    }
+
+    // Date check
+    let matchesDate = true;
+    if (filterDate) {
+      const saleDateStr = new Date(sale.sale_date).toISOString().split('T')[0];
+      matchesDate = saleDateStr === filterDate;
+    }
+
+    return matchesSearch && matchesDate;
   });
 
   const totalSales = filteredSales.reduce((sum, sale) => sum + parseFloat(sale.sale_amount || 0), 0);
@@ -90,17 +106,36 @@ const Sales = () => {
         </div>
       </div>
 
-      {/* Search */}
+      {/* Filters */}
       <div className="card mb-6">
-        <div className="relative">
-          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by employee, category, or notes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="input-field pl-10"
-          />
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by employee, category, or notes..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input-field pl-10 w-full"
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="input-field w-full sm:w-auto"
+              title="Filter Date"
+            />
+            {(filterDate || searchTerm) && (
+              <button 
+                onClick={() => { setFilterDate(''); setSearchTerm(''); }}
+                className="btn-secondary w-full sm:w-auto"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

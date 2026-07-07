@@ -8,6 +8,7 @@ import {
   FiPlus, FiTrash2, FiMinus, FiShoppingCart, FiDollarSign,
   FiCheck, FiX, FiSearch, FiPackage, FiUser, FiPercent
 } from 'react-icons/fi';
+import InventorySelectionModal from '../components/Modals/InventorySelectionModal';
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
@@ -28,13 +29,6 @@ const POS = () => {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Add item form
-  const [selectedInventory, setSelectedInventory] = useState(null);
-  const [itemWeight, setItemWeight] = useState('');
-  const [itemDiscount, setItemDiscount] = useState(0);
-  const [itemIsTaxed, setItemIsTaxed] = useState(true);
 
   // Pay form
   const [payAmount, setPayAmount] = useState('');
@@ -72,39 +66,29 @@ const POS = () => {
     }
   };
 
-  const filteredInventory = inventory.filter(item =>
-    item.category_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.karat_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.jewelry_type?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
-  const handleAddToCart = () => {
-    if (!selectedInventory || !itemWeight || parseFloat(itemWeight) <= 0) {
-      toast.error('Select an item and enter a valid weight');
+  const handleAddToCart = (selectedItemData) => {
+    const weight = round2(parseFloat(selectedItemData.saleWeight));
+    if (!selectedItemData || !weight || weight <= 0) {
+      toast.error('Invalid weight');
       return;
     }
-    const inv = selectedInventory;
-    const weight = round2(parseFloat(itemWeight));
-    const pricePerGram = parseFloat(inv.current_price) || currentPrice;
+    const pricePerGram = parseFloat(selectedItemData.current_price) || currentPrice;
 
     addItem({
       id: Date.now(),
-      inventory_id: inv.id,
-      name: `${inv.category_name || 'Item'} - ${inv.karat_name || ''}`,
-      sku: inv.id?.toString() || '',
-      karat: inv.karat_name || '',
+      inventory_id: selectedItemData.id,
+      name: `${selectedItemData.category_name || 'Item'} - ${selectedItemData.karat_name || ''}`,
+      sku: selectedItemData.id?.toString() || '',
+      karat: selectedItemData.karat_name || '',
       weight: weight,
-      basePricePerGram: parseFloat(inv.base_price) || pricePerGram,
+      basePricePerGram: parseFloat(selectedItemData.base_price) || pricePerGram,
       currentPricePerGram: pricePerGram,
-      isTaxed: itemIsTaxed,
-      discount: round2(parseFloat(itemDiscount) || 0),
+      isTaxed: true, // Defaulting to true, can be toggled in cart
+      discount: round2(parseFloat(selectedItemData.saleDiscount) || 0),
     });
 
     toast.success('Item added to cart');
-    setSelectedInventory(null);
-    setItemWeight('');
-    setItemDiscount(0);
-    setItemIsTaxed(true);
     setShowAddModal(false);
   };
 
@@ -316,85 +300,14 @@ const POS = () => {
 
       {/* ============ ADD ITEM MODAL ============ */}
       {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4 sm:mb-6">
-              <h3 className="text-lg font-bold text-white">Add Item to Cart</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-primary rounded-lg text-gray-400"><FiX /></button>
-            </div>
-
-            {/* Search */}
-            <div className="relative mb-4">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Search inventory..."
-                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                className="input-field pl-10" />
-            </div>
-
-            {/* Inventory List */}
-            <div className="max-h-48 overflow-y-auto mb-4 space-y-2">
-              {filteredInventory.map((inv) => (
-                <button key={inv.id} onClick={() => setSelectedInventory(inv)}
-                  className={`w-full text-left p-3 rounded-lg border transition ${
-                    selectedInventory?.id === inv.id
-                      ? 'border-gold bg-gold/10'
-                      : 'border-secondary hover:border-gray-600 bg-primary'
-                  }`}>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-white text-sm font-medium">{inv.category_name || 'Item'} - {inv.karat_name}</p>
-                      <p className="text-gray-500 text-xs">{inv.jewelry_type} • {inv.weight_grams}g in stock</p>
-                    </div>
-                    <span className="text-gold text-sm font-semibold">{formatCurrency(inv.current_price)}/g</span>
-                  </div>
-                </button>
-              ))}
-              {filteredInventory.length === 0 && (
-                <p className="text-gray-500 text-center py-4 text-sm">No items found</p>
-              )}
-            </div>
-
-            {/* Weight & Discount */}
-            {selectedInventory && (
-              <div className="space-y-3 border-t border-secondary pt-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Weight (grams) *</label>
-                  <input type="number" step="0.001" min="0" value={itemWeight}
-                    onChange={(e) => setItemWeight(e.target.value)}
-                    className="input-field" placeholder="e.g. 5.5" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Discount</label>
-                  <input type="number" step="0.01" min="0" value={itemDiscount}
-                    onChange={(e) => setItemDiscount(e.target.value)}
-                    className="input-field" placeholder="0.00" />
-                </div>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input type="checkbox" checked={itemIsTaxed}
-                    onChange={(e) => setItemIsTaxed(e.target.checked)}
-                    className="w-4 h-4 text-gold rounded" />
-                  <span className="text-sm text-gray-300">Apply 15% Tax</span>
-                </label>
-
-                {itemWeight && parseFloat(itemWeight) > 0 && (
-                  <div className="bg-primary rounded-lg p-3 text-sm space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Estimated Subtotal:</span>
-                      <span className="text-white">{formatCurrency(round2(parseFloat(itemWeight) * (parseFloat(selectedInventory.current_price) || currentPrice)))}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex justify-end space-x-3 mt-6">
-              <button onClick={() => setShowAddModal(false)} className="btn-secondary">Cancel</button>
-              <button onClick={handleAddToCart} className="btn-primary" disabled={!selectedInventory || !itemWeight}>
-                Add to Cart
-              </button>
-            </div>
-          </div>
-        </div>
+        <InventorySelectionModal
+          inventory={inventory}
+          categories={categories}
+          karats={karats}
+          currentPrice={currentPrice}
+          onClose={() => setShowAddModal(false)}
+          onSelect={handleAddToCart}
+        />
       )}
 
       {/* ============ PAYMENT MODAL ============ */}
