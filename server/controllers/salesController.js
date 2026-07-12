@@ -14,7 +14,7 @@ const calcItem = (item) => {
 const getAllSales = async (req, res) => {
   try {
     const salesResult = await pool.query(
-      `SELECT s.id, s.employee_id, s.sale_date, s.sale_amount, s.discount, s.notes, s.total_items, s.created_at,
+      `SELECT s.id, s.employee_id, s.sale_date, s.sale_amount, s.discount, s.notes, s.total_items, s.created_at, s.paid_amount, s.payment_status,
               e.full_name as employee_name
        FROM sales s
        LEFT JOIN employees e ON s.employee_id = e.id
@@ -89,7 +89,7 @@ const getSaleById = async (req, res) => {
 const addSale = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { employee_id, sale_date, notes, items } = req.body;
+    const { employee_id, sale_date, notes, items, paid_amount, payment_status } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'At least one item is required' });
@@ -102,8 +102,8 @@ const addSale = async (req, res) => {
     const total_discount = Math.round(calculatedItems.reduce((sum, i) => sum + i.discount, 0) * 100) / 100;
 
     const saleResult = await client.query(
-      `INSERT INTO sales (employee_id, sale_date, sale_amount, discount, total_items, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO sales (employee_id, sale_date, sale_amount, discount, total_items, notes, paid_amount, payment_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         employee_id,
@@ -112,6 +112,8 @@ const addSale = async (req, res) => {
         total_discount,
         calculatedItems.length,
         notes || null,
+        paid_amount || 0,
+        payment_status || 'Unpaid',
       ]
     );
     const sale = saleResult.rows[0];
@@ -157,7 +159,7 @@ const updateSale = async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { employee_id, sale_date, notes, items } = req.body;
+    const { employee_id, sale_date, notes, items, paid_amount, payment_status } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'At least one item is required' });
@@ -179,10 +181,10 @@ const updateSale = async (req, res) => {
     const total_discount = Math.round(calculatedItems.reduce((sum, i) => sum + i.discount, 0) * 100) / 100;
 
     const saleResult = await client.query(
-      `UPDATE sales SET employee_id = $1, sale_date = $2, sale_amount = $3, discount = $4, total_items = $5, notes = $6
-       WHERE id = $7
+      `UPDATE sales SET employee_id = $1, sale_date = $2, sale_amount = $3, discount = $4, total_items = $5, notes = $6, paid_amount = $7, payment_status = $8
+       WHERE id = $9
        RETURNING *`,
-      [employee_id, sale_date, sale_amount, total_discount, calculatedItems.length, notes || null, id]
+      [employee_id, sale_date, sale_amount, total_discount, calculatedItems.length, notes || null, paid_amount || 0, payment_status || 'Unpaid', id]
     );
 
     if (saleResult.rows.length === 0) {
@@ -223,6 +225,7 @@ const updateSale = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);
+    require('fs').writeFileSync('update_error.log', JSON.stringify(req.body, null, 2) + '\n\n' + err.message + '\n' + err.stack);
     res.status(500).json({ error: 'Server error' });
   } finally {
     client.release();

@@ -8,6 +8,7 @@ const Categories = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expandedNodes, setExpandedNodes] = useState(new Set());
+  const [sortOrder, setSortOrder] = useState('az'); // 'az', 'za', 'newest', 'oldest'
   
   const [formData, setFormData] = useState({
     mainCategory: '',
@@ -127,8 +128,18 @@ const Categories = () => {
     });
   };
 
-  const mainCategories = categories.filter(c => c.level === 0);
-  const getChildren = (parentId) => categories.filter(c => c.parent_id === parentId);
+  const sortCategories = (cats) => {
+    return [...cats].sort((a, b) => {
+      if (sortOrder === 'az') return a.name.localeCompare(b.name);
+      if (sortOrder === 'za') return b.name.localeCompare(a.name);
+      if (sortOrder === 'newest') return b.id - a.id;
+      if (sortOrder === 'oldest') return a.id - b.id;
+      return 0;
+    });
+  };
+
+  const mainCategories = sortCategories(categories.filter(c => c.level === 0));
+  const getChildren = (parentId) => sortCategories(categories.filter(c => c.parent_id === parentId));
 
   const numCategories = mainCategories.length;
   const numSubcategories = categories.filter(c => c.level === 1).length;
@@ -265,9 +276,21 @@ const Categories = () => {
         <div className="lg:col-span-8 bg-secondary rounded-xl p-6 border border-white/5 shadow-xl flex flex-col min-h-[600px]">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-lg font-semibold text-white">Hierarchy Preview</h3>
-            <span className="bg-primary px-3 py-1 rounded-full text-xs text-gray-400 border border-white/5">
-              {totalCategories} categories
-            </span>
+            <div className="flex items-center space-x-3">
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className="bg-primary border border-white/10 text-white text-sm rounded-lg px-2 py-1 focus:outline-none focus:border-gold"
+              >
+                <option value="az">A-Z</option>
+                <option value="za">Z-A</option>
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </select>
+              <span className="bg-primary px-3 py-1 rounded-full text-xs text-gray-400 border border-white/5">
+                {totalCategories} categories
+              </span>
+            </div>
           </div>
 
           {totalCategories === 0 ? (

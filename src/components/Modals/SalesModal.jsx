@@ -12,12 +12,15 @@ const TAX_RATE = 0.15;
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 const calcItemRow = (item) => {
-  const sub_total = round2(item.weight_grams * item.price_per_gram);
-  const discount = round2(item.discount || 0);
-  const afterDiscount = round2(sub_total - discount);
+  const w = parseFloat(item.weight_grams) || 0;
+  const p = parseFloat(item.price_per_gram) || 0;
+  const sub_total = round2(w * p);
+  const d = parseFloat(item.discount) || 0;
+  const discountAmount = round2(d);
+  const afterDiscount = round2(sub_total - discountAmount);
   const tax_amount = item.is_taxed ? round2(afterDiscount * TAX_RATE) : 0;
   const final_total = round2(afterDiscount + tax_amount);
-  return { ...item, sub_total, discount, tax_amount, final_total };
+  return { ...item, sub_total, tax_amount, final_total };
 };
 
 const SalesModal = ({ sale, onClose, onRefresh }) => {
@@ -46,6 +49,7 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
       setEmployeeId(sale.employee_id || '');
       setSaleDate(sale.sale_date ? sale.sale_date.split('T')[0] : new Date().toISOString().split('T')[0]);
       setNotes(sale.notes || '');
+      setPaidAmount(sale.paid_amount || '');
       if (sale.items && sale.items.length > 0) {
         setItems(sale.items.map(i => calcItemRow({
           id: i.id || Date.now() + Math.random(),
@@ -93,10 +97,16 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
 
     const pricePerGram = parseFloat(selectedItemData.current_price) || currentPrice;
 
+    const type = selectedItemData.jewelry_type || 'Jewelry';
+    const main = selectedItemData.main_category_name || '';
+    const sub = selectedItemData.sub_category_name || '';
+    const parts = [type, main, sub].filter(Boolean);
+    const generatedItemName = parts.length > 0 ? parts.join(' - ') : 'Item';
+
     const newItem = calcItemRow({
       id: Date.now(),
       inventory_id: selectedItemData.id,
-      item_name: `${selectedItemData.category_name || 'Item'} - ${selectedItemData.karat_name || ''}`,
+      item_name: generatedItemName,
       karat: selectedItemData.karat_name || '',
       weight_grams: weight,
       price_per_gram: pricePerGram,
@@ -123,7 +133,21 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
   const handleUpdateItemDiscount = (id, val) => {
     setItems(prev => prev.map(item => {
       if (item.id !== id) return item;
-      return calcItemRow({ ...item, discount: round2(parseFloat(val) || 0) });
+      return calcItemRow({ ...item, discount: val });
+    }));
+  };
+
+  const handleUpdateItemWeight = (id, val) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return calcItemRow({ ...item, weight_grams: val });
+    }));
+  };
+
+  const handleUpdateItemPrice = (id, val) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return calcItemRow({ ...item, price_per_gram: val });
     }));
   };
 
@@ -278,8 +302,16 @@ const SalesModal = ({ sale, onClose, onRefresh }) => {
                             <p className="text-white font-medium text-sm">{item.item_name}</p>
                             <p className="text-xs text-gray-500">ID: {item.inventory_id || 'Custom'} • {item.karat}</p>
                           </td>
-                          <td className="py-3 px-4 text-gray-300 text-sm">{item.weight_grams}</td>
-                          <td className="py-3 px-4 text-gray-300 text-sm">{formatCurrency(item.price_per_gram)}</td>
+                          <td className="py-3 px-4">
+                            <input type="number" min="0" step="0.01" value={item.weight_grams}
+                              onChange={(e) => handleUpdateItemWeight(item.id, e.target.value)}
+                              className="w-16 bg-[#222] border border-[#444] rounded px-2 py-1 text-sm text-white focus:border-gold outline-none" />
+                          </td>
+                          <td className="py-3 px-4">
+                            <input type="number" min="0" step="0.01" value={item.price_per_gram}
+                              onChange={(e) => handleUpdateItemPrice(item.id, e.target.value)}
+                              className="w-24 bg-[#222] border border-[#444] rounded px-2 py-1 text-sm text-white focus:border-gold outline-none" />
+                          </td>
                           <td className="py-3 px-4">
                             <input type="number" min="0" step="0.01" value={item.discount}
                               onChange={(e) => handleUpdateItemDiscount(item.id, e.target.value)}

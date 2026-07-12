@@ -10,7 +10,8 @@ const Sales = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingSale, setEditingSale] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDate, setFilterDate] = useState('');
+  const [filterDateStart, setFilterDateStart] = useState('');
+  const [filterDateEnd, setFilterDateEnd] = useState('');
 
   useEffect(() => {
     fetchSales();
@@ -67,9 +68,10 @@ const Sales = () => {
 
     // Date check
     let matchesDate = true;
-    if (filterDate) {
+    if (filterDateStart || filterDateEnd) {
       const saleDateStr = new Date(sale.sale_date).toISOString().split('T')[0];
-      matchesDate = saleDateStr === filterDate;
+      if (filterDateStart && saleDateStr < filterDateStart) matchesDate = false;
+      if (filterDateEnd && saleDateStr > filterDateEnd) matchesDate = false;
     }
 
     return matchesSearch && matchesDate;
@@ -122,14 +124,22 @@ const Sales = () => {
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="date"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
+              value={filterDateStart}
+              onChange={(e) => setFilterDateStart(e.target.value)}
               className="input-field w-full sm:w-auto"
-              title="Filter Date"
+              title="Start Date"
             />
-            {(filterDate || searchTerm) && (
+            <span className="text-gray-400 self-center hidden sm:block">-</span>
+            <input
+              type="date"
+              value={filterDateEnd}
+              onChange={(e) => setFilterDateEnd(e.target.value)}
+              className="input-field w-full sm:w-auto"
+              title="End Date"
+            />
+            {(filterDateStart || filterDateEnd || searchTerm) && (
               <button 
-                onClick={() => { setFilterDate(''); setSearchTerm(''); }}
+                onClick={() => { setFilterDateStart(''); setFilterDateEnd(''); setSearchTerm(''); }}
                 className="btn-secondary w-full sm:w-auto"
               >
                 Clear
@@ -161,7 +171,6 @@ const Sales = () => {
                         <p className="font-medium text-white">{sale.employee_name || 'Unknown'}</p>
                         <p className="text-sm text-gray-400">
                           {sale.total_items || 1} item{(sale.total_items || 1) !== 1 ? 's' : ''}
-                          {sale.discount > 0 && <span className="text-red-400 ml-1">• Disc: ${parseFloat(sale.discount).toFixed(2)}</span>}
                         </p>
                       </div>
                     </div>
@@ -171,7 +180,7 @@ const Sales = () => {
                   {sale.items && sale.items.length > 0 && (
                     <div className="text-xs text-gray-400 mb-2 space-y-0.5">
                       {sale.items.map((item, idx) => (
-                        <p key={idx} className="truncate">{item.item_name} — {item.weight_grams}g</p>
+                        <p key={idx} className="truncate">{item.item_name}</p>
                       ))}
                     </div>
                   )}
@@ -210,7 +219,6 @@ const Sales = () => {
                     <th className="text-left py-3 px-4 font-semibold text-gray-400">Date</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-400">Employee</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-400">Items</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-400">Discount</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-400">Amount</th>
                     <th className="text-left py-3 px-4 font-semibold text-gray-400">Notes</th>
                     <th className="text-right py-3 px-4 font-semibold text-gray-400">Actions</th>
@@ -238,8 +246,7 @@ const Sales = () => {
                             <div className="space-y-0.5">
                               {sale.items.map((item, idx) => (
                                 <p key={idx} className="truncate max-w-[200px]">
-                                  {item.item_name} — {item.weight_grams}g
-                                  {item.discount > 0 && <span className="text-red-400 ml-1">(-{item.discount})</span>}
+                                  {item.item_name}
                                 </p>
                               ))}
                             </div>
@@ -247,9 +254,6 @@ const Sales = () => {
                             <span className="text-gray-500">—</span>
                           )}
                         </div>
-                      </td>
-                      <td className="py-3 px-4 text-gray-300">
-                        {sale.discount > 0 ? <span className="text-red-400">${parseFloat(sale.discount).toFixed(2)}</span> : '—'}
                       </td>
                       <td className="py-3 px-4 font-semibold text-gold">
                         ${parseFloat(sale.sale_amount).toFixed(2)}
