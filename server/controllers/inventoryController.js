@@ -2,7 +2,7 @@ const pool = require('../config/database');
 
 const getInventory = async (req, res) => {
   try {
-    const { karat, jewelry_type, status } = req.query;
+    const { karat, jewelry_type, status, main_category_id } = req.query;
     let query = `
       SELECT i.*, k.name as karat_name, 
              mc.name as main_category_name,
@@ -26,6 +26,11 @@ const getInventory = async (req, res) => {
     if (jewelry_type) {
       params.push(jewelry_type);
       query += ` AND mc.jewelry_type = $${params.length}`;
+    }
+
+    if (main_category_id) {
+      params.push(main_category_id);
+      query += ` AND i.main_category_id = $${params.length}`;
     }
 
     if (status === 'sold') {

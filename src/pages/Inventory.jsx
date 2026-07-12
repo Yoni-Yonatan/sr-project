@@ -18,6 +18,7 @@ const Inventory = () => {
     karat: '',
     jewelry_type: '',
     status: '',
+    main_category_id: '',
   });
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -81,6 +82,7 @@ const Inventory = () => {
       if (filters.karat) params.karat = filters.karat;
       if (filters.jewelry_type) params.jewelry_type = filters.jewelry_type;
       if (filters.status) params.status = filters.status;
+      if (filters.main_category_id) params.main_category_id = filters.main_category_id;
       
       const response = await api.getInventory(params);
       setInventory(response.data);
@@ -173,7 +175,7 @@ const Inventory = () => {
   };
 
   const clearFilters = () => {
-    setFilters({ karat: '', jewelry_type: '', status: '' });
+    setFilters({ karat: '', jewelry_type: '', status: '', main_category_id: '' });
   };
 
   // Form Dropdown Logic
@@ -211,6 +213,13 @@ const Inventory = () => {
             <option value="Gold">Gold</option>
             <option value="Diamond">Diamond</option>
           </select>
+          <select value={filters.main_category_id} onChange={(e) => setFilters({...filters, main_category_id: e.target.value})}
+            className="input-field w-full sm:w-auto">
+            <option value="">All Categories</option>
+            {categories.filter(c => c.level === 0 && (!filters.jewelry_type || c.jewelry_type === filters.jewelry_type)).map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
           <select value={filters.karat} onChange={(e) => setFilters({...filters, karat: e.target.value})}
             className="input-field w-full sm:w-auto">
             <option value="">All Karats</option>
@@ -224,7 +233,7 @@ const Inventory = () => {
             <option value="in_stock">In Stock</option>
             <option value="sold">Sold</option>
           </select>
-          {(filters.karat || filters.jewelry_type || filters.status) && (
+          {(filters.karat || filters.jewelry_type || filters.status || filters.main_category_id) && (
             <button onClick={clearFilters} className="text-red-400 hover:text-red-300 flex items-center space-x-1">
               <FiX />
               <span>Clear</span>
@@ -397,10 +406,13 @@ const Inventory = () => {
               )}
 
               <div className="space-y-2 mb-4">
-                <h4 className="font-semibold text-lg text-white">{item.karat_name}</h4>
-                <p className="text-gray-400 text-sm">
+                <h4 className="font-semibold text-lg text-white text-wrap break-words">
                   {[item.main_category_name, item.sub_category_name, item.specific_type_name].filter(Boolean).join(' → ') || 'Uncategorized'}
-                </p>
+                </h4>
+                <div className="flex justify-between text-sm mt-3">
+                  <span className="text-gray-400">Karat:</span>
+                  <span className="font-semibold text-gray-200">{item.karat_name}</span>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Weight:</span>
                   <span className="font-semibold text-gray-200">{item.weight_grams}g</span>
